@@ -64,15 +64,23 @@ export default {
       );
     }
 
-    // Validate secret path: /mcp/{secret}/...
-    // Clients configure URL as: https://your-worker.workers.dev/mcp/YOUR_SECRET
     const pathParts = url.pathname.split("/").filter(Boolean);
+
+    // SSE callback paths — these don't include the secret because they're
+    // session-authenticated via the sessionId query param. Pass through as-is.
+    const isSSECallback = pathParts[0] === "mcp" && (pathParts[1] === "message" || pathParts[1] === "sse");
+    if (isSSECallback) {
+      return (
+        MotionMCPAgent.mount("/mcp") as { fetch: (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response> }
+      ).fetch(request, env, ctx);
+    }
+
+    // Validate secret path: /mcp/{secret}/...
     if (pathParts[0] !== "mcp" || pathParts[1] !== env.MOTION_MCP_SECRET) {
       return new Response("Not found", { status: 404 });
     }
 
     // Rewrite path to strip the secret before passing to McpAgent
-    // e.g., /mcp/SECRET -> /mcp, /mcp/SECRET/sse -> /mcp/sse
     const cleanPath = "/mcp" + (pathParts.length > 2 ? "/" + pathParts.slice(2).join("/") : "");
     const cleanUrl = new URL(cleanPath, url.origin);
     const cleanRequest = new Request(cleanUrl, request);
