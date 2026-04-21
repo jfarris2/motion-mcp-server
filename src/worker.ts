@@ -52,6 +52,8 @@ export class MotionMCPAgent extends McpAgent<Env> {
   }
 }
 
+type McpHandler = { fetch: (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response> };
+
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
@@ -66,13 +68,10 @@ export default {
 
     const pathParts = url.pathname.split("/").filter(Boolean);
 
-    // SSE callback paths — these don't include the secret because they're
-    // session-authenticated via the sessionId query param. Pass through as-is.
+    // Legacy SSE callback paths pass through (auth via sessionId)
     const isSSECallback = pathParts[0] === "mcp" && (pathParts[1] === "message" || pathParts[1] === "sse");
     if (isSSECallback) {
-      return (
-        MotionMCPAgent.mount("/mcp") as { fetch: (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response> }
-      ).fetch(request, env, ctx);
+      return (MotionMCPAgent.serveSSE("/mcp") as McpHandler).fetch(request, env, ctx);
     }
 
     // Validate secret path: /mcp/{secret}/...
@@ -85,8 +84,12 @@ export default {
     const cleanUrl = new URL(cleanPath, url.origin);
     const cleanRequest = new Request(cleanUrl, request);
 
-    return (
-      MotionMCPAgent.mount("/mcp") as { fetch: (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response> }
-    ).fetch(cleanRequest, env, ctx);
+    // Streamable HTTP (modern MCP clients like Claude.ai web)
+    if (request.method === "POST" || request.method === "DELETE") {
+      return (MotionMCPAgent.serve("/mcp") as McpHandler).fetch(cleanRequest, env, ctx);
+    }
+
+    // GET / SSE transport (Claude Desktop, legacy clients)
+    return (MotionMCPAgent.serveSSE("/mcp") as McpHandler).fetch(cleanRequest, env, ctx);
   },
 };
