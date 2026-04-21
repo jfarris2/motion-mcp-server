@@ -17,6 +17,7 @@
 
 ### Local Setup (npx)
 
+
 For desktop MCP clients — Claude Desktop, Claude Code, Cursor, and similar.
 
 Add to your `claude_desktop_config.json`:
